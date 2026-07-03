@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+bun.lockb
+bun.lock
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+db/
+*.db
+*.db-journal
+
+# Electron
+electron/dist/
+electron/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+dev.log
+server.log
+
+# Uploads
+uploads/
+
+# Agent Browser
+.agent-browser/
+
+# Z Scripts
+.zscripts/*.log
+.zscripts/dev.pid
+
+# Misc
+.cache/
+coverage/
+*.pid

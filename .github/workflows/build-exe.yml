@@ -1,0 +1,240 @@
+name: Build Desktop App (Windows .exe)
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify project structure
+        shell: bash
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo ""
+          echo "=== Files in root ==="
+          ls -la
+          echo ""
+          echo "=== Checking required files ==="
+          MISSING=0
+          for f in package.json next.config.ts tsconfig.json electron-builder.yml; do
+            if [ -f "$f" ]; then
+              echo "  OK: $f"
+            else
+              echo "  MISSING: $f"
+              MISSING=1
+            fi
+          done
+          for d in src public prisma electron .github; do
+            if [ -d "$d" ]; then
+              echo "  OK: $d/"
+            else
+              echo "  MISSING: $d/"
+              MISSING=1
+            fi
+          done
+          if [ $MISSING -eq 1 ]; then
+            echo ""
+            echo "ERROR: Required files/directories are missing!"
+            echo "Make sure you uploaded the FULL project, not just github-feasibility-files.zip"
+            exit 1
+          fi
+          echo ""
+          echo "All required files present!"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Remove bun.lock if exists
+        shell: bash
+        run: |
+          rm -f bun.lock bun.lockb
+          echo "Removed bun.lock (if existed)"
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          echo "=== Installing dependencies with npm ==="
+          npm install --legacy-peer-deps --no-audit --no-fund
+          echo ""
+          echo "=== Verifying key packages ==="
+          for pkg in next react react-dom @prisma/client prisma electron electron-builder; do
+            if [ -d "node_modules/$pkg" ]; then
+              echo "  OK: $pkg installed"
+            else
+              echo "  MISSING: $pkg"
+            fi
+          done
+
+      - name: Setup Database
+        shell: bash
+        run: |
+          mkdir -p db
+          npx prisma generate
+          npx prisma db push --accept-data-loss
+        env:
+          DATABASE_URL: "file:./db/custom.db"
+
+      - name: Build Next.js (Standalone)
+        shell: bash
+        run: npx next build --turbopack
+        env:
+          DATABASE_URL: "file:./db/custom.db"
+          NEXTAUTH_SECRET: "github-actions-build-secret-${{ github.run_id }}"
+          NEXTAUTH_URL: "http://localhost:3000"
+
+      - name: Create post-build script if missing
+        shell: bash
+        run: |
+          mkdir -p scripts
+          if [ ! -f "scripts/post-build.js" ]; then
+            cat > scripts/post-build.js << 'POSTBUILD'
+          const fs = require('fs');
+          const path = require('path');
+
+          function copyDir(src, dest) {
+            if (!fs.existsSync(src)) {
+              console.warn('  [WARN] Source not found: ' + src);
+              return 0;
+            }
+            fs.mkdirSync(dest, { recursive: true });
+            let count = 0;
+            for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+              const s = path.join(src, entry.name);
+              const d = path.join(dest, entry.name);
+              if (entry.isDirectory()) {
+                count += copyDir(s, d);
+              } else {
+                fs.copyFileSync(s, d);
+                count++;
+              }
+            }
+            return count;
+          }
+
+          console.log('');
+          console.log('=== Post-build: Copying static files to standalone ===');
+          console.log('');
+
+          const standaloneDir = path.join('.next', 'standalone');
+          if (!fs.existsSync(standaloneDir)) {
+            console.error('  [ERROR] Standalone dir not found: ' + standaloneDir);
+            console.error('  Make sure next.config.ts has: output: "standalone"');
+            process.exit(1);
+          }
+
+          const staticSrc = path.join('.next', 'static');
+          const staticDest = path.join('.next', 'standalone', '.next', 'static');
+          const staticCount = copyDir(staticSrc, staticDest);
+          console.log('  [OK] Copied ' + staticCount + ' files: .next/static -> standalone/.next/static');
+
+          const publicSrc = 'public';
+          const publicDest = path.join('.next', 'standalone', 'public');
+          const publicCount = copyDir(publicSrc, publicDest);
+          console.log('  [OK] Copied ' + publicCount + ' files: public -> standalone/public');
+
+          console.log('');
+          console.log('=== Post-build complete ===');
+          console.log('');
+          POSTBUILD
+            echo "  Created scripts/post-build.js"
+          else
+            echo "  scripts/post-build.js already exists"
+          fi
+
+      - name: Run post-build copy
+        shell: bash
+        run: node scripts/post-build.js
+
+      - name: Verify standalone build
+        shell: bash
+        run: |
+          if [ ! -f ".next/standalone/server.js" ]; then
+            echo "ERROR: .next/standalone/server.js not created!"
+            echo "Build failed. Check the logs above."
+            exit 1
+          fi
+          echo "Standalone build OK!"
+
+      - name: Install Electron Dependencies
+        shell: bash
+        run: |
+          cd .next/standalone
+          # Create package.json with description
+          cat > package.json << 'PKGJSON'
+          {
+            "name": "feasibility-study-app",
+            "version": "1.0.0",
+            "description": "Feasibility Study Builder - integrated feasibility studies",
+            "main": "electron/main.js"
+          }
+          PKGJSON
+          npm install electron electron-builder --save-dev --no-audit --no-fund
+
+      - name: Copy Electron files
+        shell: bash
+        run: |
+          cp -r electron .next/standalone/
+          cp electron-builder.yml .next/standalone/
+          cp -r public .next/standalone/
+          mkdir -p .next/standalone/db
+
+      - name: Build Electron App
+        shell: bash
+        run: |
+          cd .next/standalone
+          # Remove problematic native modules
+          rm -rf node_modules/@parcel/watcher node_modules/@parcel/watcher-win32-x64 2>/dev/null || true
+          npx electron-builder --win --config electron-builder.yml --config.npmRebuild=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: feasibility-app-windows-${{ github.run_number }}
+          path: .next/standalone/dist/*.exe
+          retention-days: 30
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: .next/standalone/dist/*.exe
+          draft: false
+          prerelease: false
+          name: Feasibility Study App ${{ github.ref_name }}
+          body: |
+            ## Feasibility Study App ${{ github.ref_name }}
+
+            ### Download:
+            - Download the `.exe` file below
+            - Run it to install
+            - Will appear in Start menu and Desktop
+
+            ### Requirements:
+            - Windows 10/11 (64-bit)
+            - 500 MB free space
+
+            ### Features:
+            - 8 integrated feasibility studies
+            - 34 Yemeni crops
+            - 30 industrial factories
+            - 10 energy projects
+            - AI assistant
+            - 8 themes
+            - Arabic/English support
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

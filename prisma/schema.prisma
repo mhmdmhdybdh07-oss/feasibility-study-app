@@ -1,0 +1,107 @@
+// Prisma schema for Feasibility Study Application
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  status          String   @default("draft") // draft | in-progress | completed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // بيانات التأسيس
+  establishment   Json?
+  // الدراسات
+  socialStudy     Json?
+  environmentalStudy Json?
+  legalStudy      Json?
+  marketStudy     Json?
+  technicalStudy  Json?
+  financialStudy  Json?
+  economicStudy   Json?
+
+  // إعدادات
+  mainCurrency    String   @default("YER")
+  displayCurrency String   @default("YER")
+  exchangeRates   Json?
+  language        String   @default("ar")
+
+  // بيانات إضافية متقدمة
+  swotAnalysis     Json?  // تحليل SWOT
+  porterAnalysis   Json?  // قوى بورتر الخمس
+  riskRegister     Json?  // سجل المخاطر
+  projectPhases    Json?  // مراحل التنفيذ
+  kpiData          Json?  // مؤشرات الأداء
+  customFields     Json?  // حقول مخصصة من المستخدم
+  resources        Json?  // إدارة الموارد: موردين، مخزون، مشتريات
+  attachments      Attachment[]
+  activities       ActivityLog[]
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  projectId   String
+  fileName    String
+  fileType    String   // MIME type
+  fileSize    Int      // bytes
+  filePath    String   // مسار التخزين
+  category    String   @default("general") // contract, license, photo, document
+  description String?
+  uploadedAt  DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  projectId   String?  // يمكن أن يكون عاماً
+  userId      String?
+  userName    String?
+  action      String   // create, update, delete, export, login
+  entity      String   // project, study, attachment
+  details     String?  // وصف التغيير
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Currency {
+  code        String   @id // YER, USD, SAR, AED, etc.
+  nameAr      String
+  nameEn      String
+  symbol      String
+  rateToYER   Float    // صرف مقابل الريال اليمني
+  updatedAt   DateTime @updatedAt
+}
+
+model Setting {
+  id        String   @id @default("singleton")
+  data      Json?
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  password  String    // hashed with bcrypt
+  role      String    @default("analyst") // admin | analyst | viewer
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  sessions  Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

@@ -1,0 +1,42 @@
+appId: com.feasibility.yemen
+productName: Feasibility-Study-App
+copyright: Copyright (c) 2026
+directories:
+  output: dist
+  buildResources: build
+files:
+  - electron/**/*
+  - .next/**/*
+  - public/**/*
+  - package.json
+  - db/**/*
+extraResources:
+  - from: public/icons
+    to: icons
+    filter:
+      - "**/*.png"
+      - "**/*.ico"
+asar: true
+asarUnpack:
+  - "**/*.node"
+npmRebuild: false
+buildDependenciesFromSource: false
+nodeGypRebuild: false
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: public/icons/icon.ico
+  artifactName: FeasibilityStudyApp-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FeasibilityStudyApp
+  installerIcon: public/icons/icon.ico
+  uninstallerIcon: public/icons/icon.ico
+  installerHeaderIcon: public/icons/icon.ico
+  menuCategory: Business
