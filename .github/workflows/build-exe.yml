@@ -168,17 +168,25 @@ jobs:
           fi
           echo "Standalone build OK!"
 
-      - name: Install Electron Dependencies
+          - name: Install Electron Dependencies
         shell: bash
         run: |
           cd .next/standalone
-          # Create package.json with description
           cat > package.json << 'PKGJSON'
           {
             "name": "feasibility-study-app",
             "version": "1.0.0",
             "description": "Feasibility Study Builder - integrated feasibility studies",
-            "main": "electron/main.js"
+            "main": "electron/main.js",
+            "author": {
+              "name": "Feasibility Study Builder",
+              "email": "info@feasibility.app"
+            },
+            "license": "MIT",
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/mhmdmhdybdh07-oss/feasibility-study-app.git"
+            }
           }
           PKGJSON
           npm install electron electron-builder --save-dev --no-audit --no-fund
