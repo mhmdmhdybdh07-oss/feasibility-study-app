@@ -169,8 +169,8 @@ jobs:
           echo "Standalone build OK!"
 
           - name: Install Electron Dependencies
-        shell: bash
-        run: |
+            shell: bash
+             run: |
           cd .next/standalone
           cat > package.json << 'PKGJSON'
           {
