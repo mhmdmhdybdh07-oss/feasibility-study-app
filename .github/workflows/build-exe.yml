@@ -95,64 +95,33 @@ jobs:
           NEXTAUTH_SECRET: "github-actions-build-secret-${{ github.run_id }}"
           NEXTAUTH_URL: "http://localhost:3000"
 
-      - name: Create post-build script if missing
+      - name: Create post-build script
         shell: bash
         run: |
           mkdir -p scripts
-          if [ ! -f "scripts/post-build.js" ]; then
-            cat > scripts/post-build.js << 'POSTBUILD'
-          const fs = require('fs');
-          const path = require('path');
-
-          function copyDir(src, dest) {
-            if (!fs.existsSync(src)) {
-              console.warn('  [WARN] Source not found: ' + src);
-              return 0;
-            }
-            fs.mkdirSync(dest, { recursive: true });
-            let count = 0;
-            for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-              const s = path.join(src, entry.name);
-              const d = path.join(dest, entry.name);
-              if (entry.isDirectory()) {
-                count += copyDir(s, d);
-              } else {
-                fs.copyFileSync(s, d);
-                count++;
-              }
-            }
-            return count;
-          }
-
-          console.log('');
-          console.log('=== Post-build: Copying static files to standalone ===');
-          console.log('');
-
-          const standaloneDir = path.join('.next', 'standalone');
-          if (!fs.existsSync(standaloneDir)) {
-            console.error('  [ERROR] Standalone dir not found: ' + standaloneDir);
-            console.error('  Make sure next.config.ts has: output: "standalone"');
-            process.exit(1);
-          }
-
-          const staticSrc = path.join('.next', 'static');
-          const staticDest = path.join('.next', 'standalone', '.next', 'static');
-          const staticCount = copyDir(staticSrc, staticDest);
-          console.log('  [OK] Copied ' + staticCount + ' files: .next/static -> standalone/.next/static');
-
-          const publicSrc = 'public';
-          const publicDest = path.join('.next', 'standalone', 'public');
-          const publicCount = copyDir(publicSrc, publicDest);
-          console.log('  [OK] Copied ' + publicCount + ' files: public -> standalone/public');
-
-          console.log('');
-          console.log('=== Post-build complete ===');
-          console.log('');
-          POSTBUILD
-            echo "  Created scripts/post-build.js"
-          else
-            echo "  scripts/post-build.js already exists"
-          fi
+          printf '%s\n' \
+            "const fs = require('fs');" \
+            "const path = require('path');" \
+            "function copyDir(src, dest) {" \
+            "  if (!fs.existsSync(src)) return 0;" \
+            "  fs.mkdirSync(dest, { recursive: true });" \
+            "  let count = 0;" \
+            "  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {" \
+            "    const s = path.join(src, entry.name);" \
+            "    const d = path.join(dest, entry.name);" \
+            "    if (entry.isDirectory()) count += copyDir(s, d);" \
+            "    else { fs.copyFileSync(s, d); count++; }" \
+            "  }" \
+            "  return count;" \
+            "}" \
+            "const standaloneDir = path.join('.next', 'standalone');" \
+            "if (!fs.existsSync(standaloneDir)) process.exit(1);" \
+            "copyDir(path.join('.next', 'static'), path.join('.next', 'standalone', '.next', 'static'));" \
+            "copyDir('public', path.join('.next', 'standalone', 'public'));" \
+            "console.log('Post-build complete');" \
+            > scripts/post-build.js
+          echo "Created scripts/post-build.js"
+          cat scripts/post-build.js
 
       - name: Run post-build copy
         shell: bash
@@ -168,27 +137,28 @@ jobs:
           fi
           echo "Standalone build OK!"
 
-          - name: Install Electron Dependencies
-            shell: bash
-             run: |
+      - name: Install Electron Dependencies
+        shell: bash
+        run: |
           cd .next/standalone
-          cat > package.json << 'PKGJSON'
-          {
-            "name": "feasibility-study-app",
-            "version": "1.0.0",
-            "description": "Feasibility Study Builder - integrated feasibility studies",
-            "main": "electron/main.js",
-            "author": {
-              "name": "Feasibility Study Builder",
-              "email": "info@feasibility.app"
-            },
-            "license": "MIT",
-            "repository": {
-              "type": "git",
-              "url": "https://github.com/mhmdmhdybdh07-oss/feasibility-study-app.git"
-            }
-          }
-          PKGJSON
+          printf '%s\n' \
+            '{' \
+            '  "name": "feasibility-study-app",' \
+            '  "version": "1.0.0",' \
+            '  "description": "Feasibility Study Builder - integrated feasibility studies",' \
+            '  "main": "electron/main.js",' \
+            '  "author": {' \
+            '    "name": "Feasibility Study Builder",' \
+            '    "email": "info@feasibility.app"' \
+            '  },' \
+            '  "license": "MIT",' \
+            '  "repository": {' \
+            '    "type": "git",' \
+            '    "url": "https://github.com/mhmdmhdybdh07-oss/feasibility-study-app.git"' \
+            '  }' \
+            '}' > package.json
+          echo "Created package.json:"
+          cat package.json
           npm install electron electron-builder --save-dev --no-audit --no-fund
 
       - name: Copy Electron files
@@ -199,14 +169,16 @@ jobs:
           cp -r public .next/standalone/
           mkdir -p .next/standalone/db
 
-          - name: Build Electron App
-             shell: bash
-             run: |
+      - name: Build Electron App
+        shell: bash
+        run: |
           cd .next/standalone
+          # Remove problematic native modules
           rm -rf node_modules/@parcel/watcher node_modules/@parcel/watcher-win32-x64 2>/dev/null || true
           npx electron-builder --win --config electron-builder.yml --config.npmRebuild=false --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
