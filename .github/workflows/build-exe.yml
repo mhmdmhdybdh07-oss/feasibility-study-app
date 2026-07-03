@@ -199,16 +199,14 @@ jobs:
           cp -r public .next/standalone/
           mkdir -p .next/standalone/db
 
-      - name: Build Electron App
-        shell: bash
-        run: |
+          - name: Build Electron App
+             shell: bash
+             run: |
           cd .next/standalone
-          # Remove problematic native modules
           rm -rf node_modules/@parcel/watcher node_modules/@parcel/watcher-win32-x64 2>/dev/null || true
-          npx electron-builder --win --config electron-builder.yml --config.npmRebuild=false
+          npx electron-builder --win --config electron-builder.yml --config.npmRebuild=false --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
